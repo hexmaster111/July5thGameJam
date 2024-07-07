@@ -45,12 +45,17 @@ typedef struct EnvItem
     int blocking;
     Color color;
     int textureId;
+    int gravity;
+
+    // process vars for things -- dont set in ctor
+    float currFallSpeed;
 } EnvItem;
 
 //----------------------------------------------------------------------------------
 // Module functions declaration
 //----------------------------------------------------------------------------------
 void UpdatePlayer(Player *player, EnvItem *envItems, int envItemsLength, float delta);
+void UpdateWorld(EnvItem *envItems, int envItemsLength, float delta);
 void UpdateCameraCenter(Camera2D *camera, Player *player, EnvItem *envItems, int envItemsLength, float delta, int width, int height);
 void UpdateCameraCenterInsideMap(Camera2D *camera, Player *player, EnvItem *envItems, int envItemsLength, float delta, int width, int height);
 void UpdateCameraCenterSmoothFollow(Camera2D *camera, Player *player, EnvItem *envItems, int envItemsLength, float delta, int width, int height);
@@ -86,15 +91,26 @@ int main(void)
 // xy to flat index, 26 tiles per col
 #define TSS(x, y) ((x) + ((y) * 26))
     // clang-format off
+
+    /*
+     * Texture
+     *   -1 : use color 
+     * 
+     * Gravity
+     *   -1 : solid
+    */
+
     EnvItem envItems[] = {
-        /*x      y  width   height    SOLID       COLOR     TEXTURE(-1 for color)*/
-        {{0,     0, TW(125), TW(50)},     0, {27,24,24,255},        -1},
-        {{0,   400, TW(125), TW(25)},     1,           GRAY, TSS(0,16)},
-        {{500, 300,  TW(2),  TW(2) },     0,           GRAY, TSS(7,11)},
-        {{300, 200,  TW(50),  TW(2)},     1,           GRAY,        37},
-        {{250, 300,  TW(12),  TW(2)},     1,           GRAY,         2},
-        {{850, 100,  TW(37),  TW(2)},     1,           GRAY,         2},
-        {{650, 300,  TW(12),  TW(2)},     1,           GRAY,         2}};
+        /*x      y  width   height    SOLID       COLOR       TEXTURE   GRAVITY*/
+        {{0,     0, TW(125), TW(50)},     0, {27,24,24,255},        -1, -1},
+        {{0,   400, TW(125), TW(25)},     1,           GRAY, TSS(0,16), -1},
+        {{300, 200,  TW(50),  TW(2)},     1,           GRAY, TSS(2, 2), -1},
+        {{250, 300,  TW(12),  TW(2)},     1,           GRAY,         2, -1},
+        {{850, 100,  TW(37),  TW(2)},     1,           GRAY,         2, -1},
+        {{650, 300,  TW(12),  TW(2)},     1,           GRAY,         2, -1},
+        {{500, 300,   TW(2),  TW(2)},     0,         YELLOW, TSS(7,11),  1}
+        
+    };
     // clang-format on
 
 #undef TSS
@@ -102,13 +118,18 @@ int main(void)
 
     int envItemsLength = sizeof(envItems) / sizeof(envItems[0]);
 
+    for (size_t i = 0; i < envItemsLength; i++)
+    {
+        envItems[i].currFallSpeed = 0;
+    }
+
     Camera2D camera = {0};
     camera.target = player.position;
     camera.offset = (Vector2){screenWidth / 2.0f, screenHeight / 2.0f};
     camera.rotation = 0.0f;
     camera.zoom = 1.0f;
 
-    bool hitboxdebug = false;
+    bool hitboxdebug = true;
 
     SetTargetFPS(60);
     //--------------------------------------------------------------------------------------
@@ -121,6 +142,7 @@ int main(void)
         float deltaTime = GetFrameTime();
 
         UpdatePlayer(&player, envItems, envItemsLength, deltaTime);
+        UpdateWorld(&envItems, envItemsLength, deltaTime);
 
         camera.zoom += ((float)GetMouseWheelMove() * 0.05f);
 
@@ -133,6 +155,8 @@ int main(void)
         {
             camera.zoom = 1.0f;
             player.position = (Vector2){400, 280};
+            envItems[6].rect.y = 300;
+            envItems[6].currFallSpeed = 0;
         }
 
         UpdateCameraPlayerBoundsPush(&camera, &player, envItems,
@@ -203,7 +227,8 @@ int main(void)
         DrawText("- Right/Left to move", 40, 40, 10, DARKGRAY);
         DrawText("- Space to jump", 40, 60, 10, DARKGRAY);
         DrawText("- Mouse Wheel to Zoom in-out, R to reset zoom", 40, 80, 10, DARKGRAY);
-        DrawText(TextFormat("Player xy%f,%f", player.position.x, player.position.y), 40, 100, 10, DARKGRAY);
+        DrawText(TextFormat("Player xy%f,%f", player.position.x, player.position.y),
+                 40, 100, 10, DARKGRAY);
 
         EndDrawing();
         //----------------------------------------------------------------------------------
@@ -215,6 +240,41 @@ int main(void)
     //--------------------------------------------------------------------------------------
 
     return 0;
+}
+
+void UpdateWorld(EnvItem *envItems, int envItemsLength, float delta)
+{
+    for (size_t i = 0; i < envItemsLength; i++)
+    {
+        // This item has gravity
+        if (envItems[i].gravity != -1)
+        {
+            bool hitObstacle = false;
+            for (int j = 0; j < envItemsLength; j++)
+            {
+                EnvItem *ei = envItems + j;
+                Vector2 p = (Vector2){envItems[i].rect.x, envItems[i].rect.y};
+
+                if (ei->blocking &&
+                    ei->rect.x <= p.x &&
+                    ei->rect.x + ei->rect.width >= p.x &&
+                    ei->rect.y >= p.y &&
+                    ei->rect.y <= p.y + envItems[i].currFallSpeed * delta)
+                {
+                    hitObstacle = true;
+                    envItems[i].currFallSpeed = 0.0f;
+                    envItems[i].rect.y = ei->rect.y;
+                    break;
+                }
+
+                if (!hitObstacle)
+                {
+                    envItems[i].rect.y += envItems[i].currFallSpeed * delta;
+                    envItems[i].currFallSpeed += 10 * delta;
+                }
+            }
+        }
+    }
 }
 
 void UpdatePlayer(Player *player, EnvItem *envItems, int envItemsLength, float delta)
