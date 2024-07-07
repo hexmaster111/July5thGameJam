@@ -28,8 +28,25 @@ enum
     DIRECTION_RIGHT
 };
 
+typedef enum ESTRINGS
+{
+    STR_DOOR_TAKES_ONE_KEY,
+    STR_DOOR_TAKES_TWO_KEY,
+    STR_DOOR_TAKES_THREE_KEY,
+} ESTRINGS;
+
+// clang-format off
+static const char *GetString(enum ESTRINGS str){switch (str){ 
+    case STR_DOOR_TAKES_ONE_KEY  : return "Door Takes One Key";
+    case STR_DOOR_TAKES_TWO_KEY  : return "Door Takes Two Keys";
+    case STR_DOOR_TAKES_THREE_KEY: return "Door Takes Three Keys";
+    default: return "UNKNOWN STRING"
+    ;}}
+// clang-format on
+
 typedef struct Player
 {
+    int keys;
     Vector2 position;
     float speed;
     bool canJump;
@@ -39,28 +56,111 @@ typedef struct Player
     int anamationTime;
 } Player;
 
+typedef struct EnvItem;
+
+// when player touches item     all items in env                        player that touched                 the item that was touched
+typedef void (*EnvItemCallback)(struct EnvItem *items, int itemsLen, struct Player *player, float delta, struct EnvItem *item);
+
 typedef struct EnvItem
 {
+    const char *dbgname;
     Rectangle rect;
     int blocking;
     Color color;
-    int textureId;
+    int textureId,
+        textureTilesWide,
+        textureTilesTall;
+
     int gravity;
+    EnvItemCallback
+        touch,
+        interact;
+
+    // things not everything may use ------
+    int opt1, opt2, opt3;
 
     // process vars for things -- dont set in ctor
     float currFallSpeed;
+    bool isKeyTaken;
 } EnvItem;
 
 //----------------------------------------------------------------------------------
 // Module functions declaration
 //----------------------------------------------------------------------------------
 void UpdatePlayer(Player *player, EnvItem *envItems, int envItemsLength, float delta);
-void UpdateWorld(EnvItem *envItems, int envItemsLength, float delta);
+void UpdateWorld(Player *player, EnvItem *envItems, int envItemsLength, float delta);
 void UpdateCameraCenter(Camera2D *camera, Player *player, EnvItem *envItems, int envItemsLength, float delta, int width, int height);
 void UpdateCameraCenterInsideMap(Camera2D *camera, Player *player, EnvItem *envItems, int envItemsLength, float delta, int width, int height);
 void UpdateCameraCenterSmoothFollow(Camera2D *camera, Player *player, EnvItem *envItems, int envItemsLength, float delta, int width, int height);
 void UpdateCameraEvenOutOnLanding(Camera2D *camera, Player *player, EnvItem *envItems, int envItemsLength, float delta, int width, int height);
 void UpdateCameraPlayerBoundsPush(Camera2D *camera, Player *player, EnvItem *envItems, int envItemsLength, float delta, int width, int height);
+
+typedef void(*RenderMethod(EnvItem *items, int itemsLen, Player *player, EnvItem *item, void *tag));
+
+void AddRenderEvent(RenderMethod renderMethod, Player *player, EnvItem *item, void *tag);
+
+void PlayerInteractDoor(EnvItem *items, int itemsLen, Player *player, float delta, EnvItem *item)
+{
+    // printf("Touched item: %s \n", item->dbgname);
+}
+
+// tag is message
+void DoorKeyMessageRenderMethod(EnvItem *items, int itemsLen, Player *player, EnvItem *item, void *tag)
+{
+    const char *msg = (const char *)tag;
+}
+
+void PlayerTouchedDoor(EnvItem *items, int itemsLen, Player *player, float delta, EnvItem *item)
+{
+    if (item->opt1 == 1)
+    {
+
+        // I really just want to call DrawText here... but we need to do it at the right time while we are rendering...
+        // this event is called we are updating and checking for interactions before draw start
+        AddRenderEvent((RenderMethod *)DoorKeyMessageRenderMethod, player, item, (void *)GetString(STR_DOOR_TAKES_ONE_KEY));
+
+        // error: incompatible function pointer types passing
+        //'void (EnvItem *, int, Player *, EnvItem *, void *)'
+        //(aka 'void (struct EnvItem *, int, struct Player *, struct EnvItem *, void *)')
+        //
+        // to parameter of type 'RenderMethod *'
+        //(aka 'void *(*)(struct EnvItem *, int, struct Player *, struct EnvItem *, void *)')
+        //  [-Wincompatible-function-pointer-types]
+    }
+
+    if (item->opt1 == 2)
+    {
+        // I really just want to call DrawText here... but we need to do it at the right time while we are rendering...
+        // this event is called we are updating and checking for interactions before draw start
+        AddRenderEvent(DoorKeyMessageRenderMethod, player, item, (void *)GetString(STR_DOOR_TAKES_TWO_KEY));
+    }
+}
+
+void PlayerTouchedKey(EnvItem *items, int itemsLen, Player *player, float delta, EnvItem *item)
+{
+    if (item->isKeyTaken)
+        return; // player walked over where the key was
+    printf("Touched item: %s \n", item->dbgname);
+    item->isKeyTaken = true;
+    item->textureId = -1.0f;
+    item->color = BLANK;
+    player->keys++;
+}
+
+//--- global state not held within main >.<
+
+struct RenderEvent
+{
+    RenderMethod *method;
+    Player *player;
+    EnvItem *item;
+    void *user_tag;
+} GSEVENTS[128] = {0};
+
+void AddRenderEvent(RenderMethod renderMethod, Player *player, EnvItem *item, void *tag)
+{
+}
+//---
 
 //------------------------------------------------------------------------------------
 // Program main entry point
@@ -70,12 +170,13 @@ int main(void)
     // Initialization
     //--------------------------------------------------------------------------------------
     const int screenWidth = 800;
-    const int screenHeight = 450;
+    const int screenHeight = 600;
 
     InitWindow(screenWidth, screenHeight, "game");
     Texture2D tilesTexture = LoadTexture("Tiles-and-EnemiesT.png");
+    const int tiles = tilesTexture.width / 8;
 
-    printf("tiles w %d\n", tilesTexture.width / 8);
+    printf("tiles w %d\n", tiles);
 
     Texture2D playerTexture = LoadTexture("PlayerT.png");
 
@@ -87,9 +188,9 @@ int main(void)
 
 // Convert tile tiles to px
 #define TW(x) \
-    (x * 8)
+    (x * 16)
 // xy to flat index, 26 tiles per col
-#define TSS(x, y) ((x) + ((y) * 26))
+#define TSS(x, y) ((x) + ((y) * (tiles)))
     // clang-format off
 
     /*
@@ -99,16 +200,16 @@ int main(void)
      * Gravity
      *   -1 : solid
     */
-
     EnvItem envItems[] = {
-        /*x      y  width   height    SOLID       COLOR       TEXTURE   GRAVITY*/
-        {{0,     0, TW(125), TW(50)},     0, {27,24,24,255},        -1, -1},
-        {{0,   400, TW(125), TW(25)},     1,           GRAY, TSS(0,16), -1},
-        {{300, 200,  TW(50),  TW(2)},     1,           GRAY, TSS(2, 2), -1},
-        {{250, 300,  TW(12),  TW(2)},     1,           GRAY,         2, -1},
-        {{850, 100,  TW(37),  TW(2)},     1,           GRAY,         2, -1},
-        {{650, 300,  TW(12),  TW(2)},     1,           GRAY,         2, -1},
-        {{500, 300,   TW(2),  TW(2)},     0,         YELLOW, TSS(7,11),  1}
+        /*dbg   x      y  width   height    SOLID       COLOR       TEXTUREID    W H    GRAVITY   PlayerTouchCallback     PlayerInteractedWithCallback opt1, opt2, opt3*/
+        {  "bg",{0,     0, TW(75), TW(25)},     0, {27,24,24,255},         -1,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0},
+        {    "",{0,   400, TW(75), TW(15)},     1,           GRAY,  TSS(0,16),  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0},
+        {    "",{300, 200, TW(25),  TW(1)},     1,           GRAY,  TSS(2, 2),  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0},
+        {    "",{250, 300,  TW(6),  TW(1)},     1,           GRAY,          2,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0},
+        {    "",{850, 100, TW(20),  TW(1)},     1,           GRAY,          2,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0},
+        {    "",{650, 300,  TW(6),  TW(1)},     1,           GRAY,          2,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0},
+        { "key",{500, 300,  TW(1),  TW(1)},     0,         YELLOW, TSS(7, 11),  1,1,     1000,        PlayerTouchedKey, (EnvItemCallback*)NULL,            0,    0,    0},
+        {"door",{540, 168,  TW(1),  TW(2)},     0,            RED, TSS(10,16),  1,2,       -1,       PlayerTouchedDoor,     PlayerInteractDoor,/*1 key*/   1,    0,    0}
         
     };
     // clang-format on
@@ -129,7 +230,7 @@ int main(void)
     camera.rotation = 0.0f;
     camera.zoom = 1.0f;
 
-    bool hitboxdebug = true;
+    bool hitboxdebug = false;
 
     SetTargetFPS(60);
     //--------------------------------------------------------------------------------------
@@ -142,7 +243,7 @@ int main(void)
         float deltaTime = GetFrameTime();
 
         UpdatePlayer(&player, envItems, envItemsLength, deltaTime);
-        UpdateWorld(&envItems, envItemsLength, deltaTime);
+        UpdateWorld(&player, &envItems, envItemsLength, deltaTime);
 
         camera.zoom += ((float)GetMouseWheelMove() * 0.05f);
 
@@ -156,7 +257,10 @@ int main(void)
             camera.zoom = 1.0f;
             player.position = (Vector2){400, 280};
             envItems[6].rect.y = 300;
-            envItems[6].currFallSpeed = 0;
+        }
+        if (IsKeyPressed(KEY_D))
+        {
+            hitboxdebug = !hitboxdebug;
         }
 
         UpdateCameraPlayerBoundsPush(&camera, &player, envItems,
@@ -178,26 +282,42 @@ int main(void)
                 DrawRectangleRec(envItems[i].rect, envItems[i].color);
             else
             {
-                int tileSheetSize = 8;
-                Rectangle src = {0, 0, tileSheetSize, tileSheetSize};
+                int tileSheetSpriteSize = 8;
                 const int sprites_per_row = 26;
 
                 int row = envItems[i].textureId / sprites_per_row;
                 int col = envItems[i].textureId % sprites_per_row;
 
-                src.x = col * tileSheetSize;
-                src.y = row * tileSheetSize;
+                Rectangle src = {0, 0, tileSheetSpriteSize, tileSheetSpriteSize};
+                src.x = col * tileSheetSpriteSize;
+                src.y = row * tileSheetSpriteSize;
 
                 int tileSize = 16;
                 int tilesWide = envItems[i].rect.width / tileSize;
 
                 Rectangle drawingPos = {0, envItems[i].rect.y, tileSize, tileSize};
 
-                for (size_t tw = 0; tw < tilesWide; tw++)
+                // doors
+                if (envItems[i].textureTilesTall != 1 || envItems[i].textureTilesWide != 1)
                 {
-                    drawingPos.x = tw * tileSize + envItems[i].rect.x;
+                    drawingPos.x = envItems[i].rect.x;
 
-                    DrawTexturePro(tilesTexture, src, drawingPos, (Vector2){0, 0}, 0, WHITE);
+                    for (size_t m = 0; m < envItems[i].textureTilesTall; m++)
+                    {
+                        drawingPos.y = (envItems[i].rect.y - (m * tileSize)) + tileSize;
+
+                        src.y = src.y - (m * tileSheetSpriteSize);
+
+                        DrawTexturePro(tilesTexture, src, drawingPos, (Vector2){0, 0}, 0, WHITE);
+                    }
+                }
+                else // everything else
+                {
+                    for (size_t tw = 0; tw < tilesWide; tw++)
+                    {
+                        drawingPos.x = tw * tileSize + envItems[i].rect.x;
+                        DrawTexturePro(tilesTexture, src, drawingPos, (Vector2){0, 0}, 0, WHITE);
+                    }
                 }
 
                 if (hitboxdebug)
@@ -219,7 +339,7 @@ int main(void)
 
         DrawTexturePro(playerTexture, source, playerRect, (Vector2){0, 0}, 0, WHITE);
 
-        DrawCircleV(player.position, 5.0f, GOLD);
+        // DrawCircleV(player.position, 5.0f, GOLD);
 
         EndMode2D();
 
@@ -227,8 +347,8 @@ int main(void)
         DrawText("- Right/Left to move", 40, 40, 10, DARKGRAY);
         DrawText("- Space to jump", 40, 60, 10, DARKGRAY);
         DrawText("- Mouse Wheel to Zoom in-out, R to reset zoom", 40, 80, 10, DARKGRAY);
-        DrawText(TextFormat("Player xy%f,%f", player.position.x, player.position.y),
-                 40, 100, 10, DARKGRAY);
+        DrawText(TextFormat("Player xy%f,%f", player.position.x, player.position.y), 40, 100, 10, DARKGRAY);
+        DrawText(TextFormat("Keys %d", player.keys), 40, 120, 10, WHITE);
 
         EndDrawing();
         //----------------------------------------------------------------------------------
@@ -242,12 +362,12 @@ int main(void)
     return 0;
 }
 
-void UpdateWorld(EnvItem *envItems, int envItemsLength, float delta)
+void UpdateWorld(Player *player, EnvItem *envItems, int envItemsLength, float delta)
 {
     for (size_t i = 0; i < envItemsLength; i++)
     {
         // This item has gravity
-        if (envItems[i].gravity != -1)
+        if (envItems[i].gravity != -1.0f)
         {
             bool hitObstacle = false;
             for (int j = 0; j < envItemsLength; j++)
@@ -258,20 +378,29 @@ void UpdateWorld(EnvItem *envItems, int envItemsLength, float delta)
                 if (ei->blocking &&
                     ei->rect.x <= p.x &&
                     ei->rect.x + ei->rect.width >= p.x &&
-                    ei->rect.y >= p.y &&
-                    ei->rect.y <= p.y + envItems[i].currFallSpeed * delta)
+                    ei->rect.y - 16 >= p.y &&
+                    ei->rect.y - 16 <= p.y + envItems[i].currFallSpeed * delta)
                 {
                     hitObstacle = true;
                     envItems[i].currFallSpeed = 0.0f;
-                    envItems[i].rect.y = ei->rect.y;
+                    envItems[i].rect.y = ei->rect.y - 16;
                     break;
                 }
+            }
 
-                if (!hitObstacle)
-                {
-                    envItems[i].rect.y += envItems[i].currFallSpeed * delta;
-                    envItems[i].currFallSpeed += 10 * delta;
-                }
+            if (!hitObstacle)
+            {
+                envItems[i].rect.y += envItems[i].currFallSpeed * delta;
+                envItems[i].currFallSpeed += envItems[i].gravity * delta;
+            }
+        }
+
+        // this item cares is player touches it
+        if (envItems[i].touch != NULL)
+        {
+            if (CheckCollisionCircleRec(player->position, 2.0f, envItems[i].rect))
+            {
+                envItems[i].touch(envItems, envItemsLength, player, delta, &envItems[i]);
             }
         }
     }
@@ -310,6 +439,21 @@ void UpdatePlayer(Player *player, EnvItem *envItems, int envItemsLength, float d
     {
         player->speed = -PLAYER_JUMP_SPD;
         player->canJump = false;
+    }
+
+    if (IsKeyDown(KEY_ENTER) && player->canJump)
+    {
+        for (int i = 0; i < envItemsLength; i++)
+        {
+            if (CheckCollisionCircleRec(player->position, 2, envItems[i].rect))
+            {
+                if (envItems[i].interact != NULL)
+                {
+                    envItems[i].interact(envItems, envItemsLength, player, delta, &envItems[i]);
+                    break;
+                }
+            }
+        }
     }
 
     bool hitObstacle = false;
