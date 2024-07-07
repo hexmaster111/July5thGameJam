@@ -68,7 +68,7 @@ int main(void)
     const int screenHeight = 450;
 
     InitWindow(screenWidth, screenHeight, "game");
-    Texture2D tilesTexture = LoadTexture("Tiles-and-Enemies.png");
+    Texture2D tilesTexture = LoadTexture("Tiles-and-EnemiesT.png");
 
     printf("tiles w %d\n", tilesTexture.width / 8);
 
@@ -79,12 +79,26 @@ int main(void)
     player.speed = 0;
     player.canJump = false;
     player.direction = DIRECTION_RIGHT;
+
+// Convert tile tiles to px
+#define TW(x) \
+    (x * 8)
+// xy to flat index, 26 tiles per col
+#define TSS(x, y) ((x) + ((y) * 26))
+    // clang-format off
     EnvItem envItems[] = {
-        {{0, 0, 1000, 400}, 0, LIGHTGRAY, -1},
-        {{0, 400, 1000, 200}, 1, GRAY, 2},
-        {{300, 200, 400, 10}, 1, GRAY, 2},
-        {{250, 300, 100, 10}, 1, GRAY, 2},
-        {{650, 300, 100, 10}, 1, GRAY, 2}};
+        /*x      y  width   height    SOLID       COLOR     TEXTURE(-1 for color)*/
+        {{0,     0, TW(125), TW(50)},     0, {27,24,24,255},        -1},
+        {{0,   400, TW(125), TW(25)},     1,           GRAY, TSS(0,16)},
+        {{500, 300,  TW(2),  TW(2) },     0,           GRAY, TSS(7,11)},
+        {{300, 200,  TW(50),  TW(2)},     1,           GRAY,        37},
+        {{250, 300,  TW(12),  TW(2)},     1,           GRAY,         2},
+        {{850, 100,  TW(37),  TW(2)},     1,           GRAY,         2},
+        {{650, 300,  TW(12),  TW(2)},     1,           GRAY,         2}};
+    // clang-format on
+
+#undef TSS
+#undef TW
 
     int envItemsLength = sizeof(envItems) / sizeof(envItems[0]);
 
@@ -93,6 +107,8 @@ int main(void)
     camera.offset = (Vector2){screenWidth / 2.0f, screenHeight / 2.0f};
     camera.rotation = 0.0f;
     camera.zoom = 1.0f;
+
+    bool hitboxdebug = false;
 
     SetTargetFPS(60);
     //--------------------------------------------------------------------------------------
@@ -119,7 +135,8 @@ int main(void)
             player.position = (Vector2){400, 280};
         }
 
-        UpdateCameraPlayerBoundsPush(&camera, &player, envItems, envItemsLength, deltaTime, screenWidth, screenHeight);
+        UpdateCameraPlayerBoundsPush(&camera, &player, envItems,
+                                     envItemsLength, deltaTime, screenWidth, screenHeight);
 
         //----------------------------------------------------------------------------------
 
@@ -137,23 +154,34 @@ int main(void)
                 DrawRectangleRec(envItems[i].rect, envItems[i].color);
             else
             {
-
-                Rectangle src = {0, 0, 8, 8};
+                int tileSheetSize = 8;
+                Rectangle src = {0, 0, tileSheetSize, tileSheetSize};
                 const int sprites_per_row = 26;
 
                 int row = envItems[i].textureId / sprites_per_row;
                 int col = envItems[i].textureId % sprites_per_row;
 
-                src.x = col * 8;
-                src.y = row * 8;
+                src.x = col * tileSheetSize;
+                src.y = row * tileSheetSize;
 
-                
-                //TODO: Tile the rect
-                DrawTexturePro(tilesTexture, src, envItems[i].rect, (Vector2){0, 0}, 0, WHITE);
+                int tileSize = 16;
+                int tilesWide = envItems[i].rect.width / tileSize;
+
+                Rectangle drawingPos = {0, envItems[i].rect.y, tileSize, tileSize};
+
+                for (size_t tw = 0; tw < tilesWide; tw++)
+                {
+                    drawingPos.x = tw * tileSize + envItems[i].rect.x;
+
+                    DrawTexturePro(tilesTexture, src, drawingPos, (Vector2){0, 0}, 0, WHITE);
+                }
+
+                if (hitboxdebug)
+                    DrawRectangleRec(envItems[i].rect, envItems[i].color);
             }
         }
 
-        Rectangle playerRect = {player.position.x - 20, player.position.y - 60, 40.0f, 60.0f};
+        Rectangle playerRect = {player.position.x - 20, player.position.y - 40, 40.0f, 40.0f};
         // DrawRectangleRec(playerRect, RED);
 
         Rectangle source = {0, 0, 16, 16};
@@ -175,6 +203,7 @@ int main(void)
         DrawText("- Right/Left to move", 40, 40, 10, DARKGRAY);
         DrawText("- Space to jump", 40, 60, 10, DARKGRAY);
         DrawText("- Mouse Wheel to Zoom in-out, R to reset zoom", 40, 80, 10, DARKGRAY);
+        DrawText(TextFormat("Player xy%f,%f", player.position.x, player.position.y), 40, 100, 10, DARKGRAY);
 
         EndDrawing();
         //----------------------------------------------------------------------------------
