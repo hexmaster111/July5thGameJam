@@ -33,15 +33,17 @@ typedef enum ESTRINGS
     STR_DOOR_TAKES_ONE_KEY,
     STR_DOOR_TAKES_TWO_KEY,
     STR_DOOR_TAKES_THREE_KEY,
+    MSG_PRESS_USE_TO_ENTER
 } ESTRINGS;
 
 // clang-format off
 static const char *GetString(enum ESTRINGS str){switch (str){ 
-    case STR_DOOR_TAKES_ONE_KEY  : return "Door Takes One Key";
-    case STR_DOOR_TAKES_TWO_KEY  : return "Door Takes Two Keys";
-    case STR_DOOR_TAKES_THREE_KEY: return "Door Takes Three Keys";
-    default: return "UNKNOWN STRING"
-    ;}}
+    case STR_DOOR_TAKES_ONE_KEY   : return "Door Takes One Key";
+    case STR_DOOR_TAKES_TWO_KEY   : return "Door Takes Two Keys";
+    case STR_DOOR_TAKES_THREE_KEY : return "Door Takes Three Keys";
+    case MSG_PRESS_USE_TO_ENTER   : return "Press Use to Enter";
+    default                       : return "UNKNOWN STRING";
+}}
 // clang-format on
 
 typedef struct Player
@@ -77,12 +79,14 @@ typedef struct EnvItem
         interact;
 
     // things not everything may use ------
-    int opt1, opt2, opt3;
+    int opt1, opt2, opt3, opt4;
 
     // process vars for things -- dont set in ctor
     float currFallSpeed;
     bool isKeyTaken;
+    bool isDoorOpen;
 } EnvItem;
+
 
 //----------------------------------------------------------------------------------
 // Module functions declaration
@@ -101,38 +105,39 @@ void AddRenderEvent(RenderMethod renderMethod, Player *player, EnvItem *item, vo
 
 void PlayerInteractDoor(EnvItem *items, int itemsLen, Player *player, float delta, EnvItem *item)
 {
-    // printf("Touched item: %s \n", item->dbgname);
+    if (player->keys >= item->opt1)
+    {
+        player->keys = player->keys - item->opt1;
+        item->isDoorOpen = true;
+    }
 }
 
 // tag is message
 void DoorKeyMessageRenderMethod(EnvItem *items, int itemsLen, Player *player, EnvItem *item, void *tag)
 {
     const char *msg = (const char *)tag;
+    DrawText(msg, item->rect.x, item->rect.y - 32, 12, WHITE);
+    if (player->keys >= item->opt1)
+    {
+        DrawText(GetString(MSG_PRESS_USE_TO_ENTER), item->rect.x, item->rect.y - 32 + 12, 12, WHITE);
+    }
 }
 
 void PlayerTouchedDoor(EnvItem *items, int itemsLen, Player *player, float delta, EnvItem *item)
 {
     if (item->opt1 == 1)
     {
-
-        // I really just want to call DrawText here... but we need to do it at the right time while we are rendering...
-        // this event is called we are updating and checking for interactions before draw start
-        AddRenderEvent((RenderMethod *)DoorKeyMessageRenderMethod, player, item, (void *)GetString(STR_DOOR_TAKES_ONE_KEY));
-
-        // error: incompatible function pointer types passing
-        //'void (EnvItem *, int, Player *, EnvItem *, void *)'
-        //(aka 'void (struct EnvItem *, int, struct Player *, struct EnvItem *, void *)')
-        //
-        // to parameter of type 'RenderMethod *'
-        //(aka 'void *(*)(struct EnvItem *, int, struct Player *, struct EnvItem *, void *)')
-        //  [-Wincompatible-function-pointer-types]
+        AddRenderEvent(DoorKeyMessageRenderMethod, player, item, (void *)GetString(STR_DOOR_TAKES_ONE_KEY));
     }
 
     if (item->opt1 == 2)
     {
-        // I really just want to call DrawText here... but we need to do it at the right time while we are rendering...
-        // this event is called we are updating and checking for interactions before draw start
         AddRenderEvent(DoorKeyMessageRenderMethod, player, item, (void *)GetString(STR_DOOR_TAKES_TWO_KEY));
+    }
+
+    if (item->opt1 == 3)
+    {
+        AddRenderEvent(DoorKeyMessageRenderMethod, player, item, (void *)GetString(STR_DOOR_TAKES_THREE_KEY));
     }
 }
 
@@ -156,9 +161,14 @@ struct RenderEvent
     EnvItem *item;
     void *user_tag;
 } GSEVENTS[128] = {0};
+int GSEVENTSSTACKINDEX;
 
 void AddRenderEvent(RenderMethod renderMethod, Player *player, EnvItem *item, void *tag)
 {
+    if (GSEVENTSSTACKINDEX >= 128)
+        return; // drop it
+    GSEVENTS[GSEVENTSSTACKINDEX] = (struct RenderEvent){renderMethod, player, item, tag};
+    GSEVENTSSTACKINDEX++;
 }
 //---
 
@@ -171,6 +181,7 @@ int main(void)
     //--------------------------------------------------------------------------------------
     const int screenWidth = 800;
     const int screenHeight = 600;
+    GSEVENTSSTACKINDEX = 0;
 
     InitWindow(screenWidth, screenHeight, "game");
     Texture2D tilesTexture = LoadTexture("Tiles-and-EnemiesT.png");
@@ -200,28 +211,68 @@ int main(void)
      * Gravity
      *   -1 : solid
     */
-    EnvItem envItems[] = {
-        /*dbg   x      y  width   height    SOLID       COLOR       TEXTUREID    W H    GRAVITY   PlayerTouchCallback     PlayerInteractedWithCallback opt1, opt2, opt3*/
-        {  "bg",{0,     0, TW(75), TW(25)},     0, {27,24,24,255},         -1,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0},
-        {    "",{0,   400, TW(75), TW(15)},     1,           GRAY,  TSS(0,16),  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0},
-        {    "",{300, 200, TW(25),  TW(1)},     1,           GRAY,  TSS(2, 2),  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0},
-        {    "",{250, 300,  TW(6),  TW(1)},     1,           GRAY,          2,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0},
-        {    "",{850, 100, TW(20),  TW(1)},     1,           GRAY,          2,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0},
-        {    "",{650, 300,  TW(6),  TW(1)},     1,           GRAY,          2,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0},
-        { "key",{500, 300,  TW(1),  TW(1)},     0,         YELLOW, TSS(7, 11),  1,1,     1000,        PlayerTouchedKey, (EnvItemCallback*)NULL,            0,    0,    0},
-        {"door",{540, 168,  TW(1),  TW(2)},     0,            RED, TSS(10,16),  1,2,       -1,       PlayerTouchedDoor,     PlayerInteractDoor,/*1 key*/   1,    0,    0}
-        
+
+#define ONEKEY (1)
+#define TWOKEY (2)
+#define THREKY (3)
+
+ int _doorId = 0,
+        level1door=_doorId++,
+        level2door=_doorId++
+   ;
+
+    EnvItem level1[] = {
+        /*dbg   x      y  width   height    SOLID       COLOR  TEXTUREID    W H    GRAVITY   PlayerTouchCallback     PlayerInteractedWithCallback opt1, opt2, opt3   opt4*/
+        {  "bg",{0,     0, TW(75), TW(25)}, 0, {27,24,24,255},         -1,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0,     0},
+        {    "",{0,   400, TW(75), TW(15)}, 1,           GRAY,  TSS(0,16),  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0,     0},
+        {    "",{300, 200, TW(25),  TW(1)}, 1,           GRAY,  TSS(2, 2),  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0,     0},
+        {    "",{250, 300,  TW(6),  TW(1)}, 1,           GRAY,          2,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0,     0},
+        {    "",{850, 100, TW(20),  TW(1)}, 1,           GRAY,          2,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0,     0},
+        {    "",{650, 300,  TW(6),  TW(1)}, 1,           GRAY,          2,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0,     0},
+        { "key",{500, 300,  TW(1),  TW(1)}, 0,         YELLOW, TSS(7, 11),  1,1,     1000,        PlayerTouchedKey, (EnvItemCallback*)NULL,            0,    0,    0,     0},
+        {"door",{540, 168,  TW(1),  TW(2)}, 0,            RED, TSS(10,16),  1,2,       -1,       PlayerTouchedDoor,     PlayerInteractDoor,       ONEKEY,    level2door,    0,   level1door}
     };
+
+
+    EnvItem level2[] = {
+        /*dbg   x      y  width   height    SOLID COLOR TEXTUREID    W H    GRAVITY   PlayerTouchCallback     PlayerInteractedWithCallback opt1,    opt2, opt3     opt4*/
+        {    "",{0,   400, TW(75), TW(15)}, 1,    GRAY,  TSS(0,16),  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0,      0},
+        {    "",{300, 200, TW(25),  TW(1)}, 1,    GRAY,  TSS(2, 2),  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0,      0},
+        {    "",{250, 300,  TW(6),  TW(1)}, 1,    GRAY,          2,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0,      0},
+        {    "",{850, 100, TW(20),  TW(1)}, 1,    GRAY,          2,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0,      0},
+        {    "",{650, 300,  TW(6),  TW(1)}, 1,    GRAY,          2,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0,      0},
+        { "key",{500, 300,  TW(1),  TW(1)}, 0,  YELLOW, TSS(7, 11),  1,1,     1000,        PlayerTouchedKey, (EnvItemCallback*)NULL,            0,    0,    0,      0},
+        {"door",{540, 168,  TW(1),  TW(2)}, 0,     RED, TSS(10,16),  1,2,       -1,       PlayerTouchedDoor,     PlayerInteractDoor,       TWOKEY,    0,    0, level2door}
+    };
+
+
+    int* levelLens[]={
+        sizeof(level1) / sizeof(level1[0]),
+        sizeof(level2) / sizeof(level2[0]),
+
+    };
+
+    EnvItem* levels[]={
+        &level1,
+        &level2
+    };
+
+
+    EnvItem* envItems = levels[0];
+    int envItemsLength = levelLens[0];
+
     // clang-format on
+
+    // envItems = levels[1];
 
 #undef TSS
 #undef TW
 
-    int envItemsLength = sizeof(envItems) / sizeof(envItems[0]);
 
     for (size_t i = 0; i < envItemsLength; i++)
     {
         envItems[i].currFallSpeed = 0;
+        envItems[i].isDoorOpen = false;
     }
 
     Camera2D camera = {0};
@@ -243,7 +294,7 @@ int main(void)
         float deltaTime = GetFrameTime();
 
         UpdatePlayer(&player, envItems, envItemsLength, deltaTime);
-        UpdateWorld(&player, &envItems, envItemsLength, deltaTime);
+        UpdateWorld(&player, envItems, envItemsLength, deltaTime);
 
         camera.zoom += ((float)GetMouseWheelMove() * 0.05f);
 
@@ -298,8 +349,15 @@ int main(void)
                 Rectangle drawingPos = {0, envItems[i].rect.y, tileSize, tileSize};
 
                 // doors
-                if (envItems[i].textureTilesTall != 1 || envItems[i].textureTilesWide != 1)
+                if (envItems[i].textureTilesTall == 2 && envItems[i].textureTilesWide == 1)
                 {
+
+                    if (envItems[i].isDoorOpen)
+                    {
+                        src.x = 23 * tileSheetSpriteSize;
+                        src.y = 11 * tileSheetSpriteSize;
+                    }
+
                     drawingPos.x = envItems[i].rect.x;
 
                     for (size_t m = 0; m < envItems[i].textureTilesTall; m++)
@@ -325,6 +383,16 @@ int main(void)
             }
         }
 
+        // draw events
+        for (size_t eidx = 0; eidx < GSEVENTSSTACKINDEX; eidx++)
+        {
+            struct RenderEvent *rev = &GSEVENTS[eidx];
+            rev->method(envItems, envItemsLength, &player, rev->item, rev->user_tag);
+        }
+
+        GSEVENTSSTACKINDEX = 0;
+
+        // draw player
         Rectangle playerRect = {player.position.x - 20, player.position.y - 40, 40.0f, 40.0f};
         // DrawRectangleRec(playerRect, RED);
 
