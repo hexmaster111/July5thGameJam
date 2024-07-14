@@ -33,7 +33,7 @@ typedef enum ESTRINGS
     STR_DOOR_TAKES_ONE_KEY,
     STR_DOOR_TAKES_TWO_KEY,
     STR_DOOR_TAKES_THREE_KEY,
-    MSG_PRESS_USE_TO_ENTER
+    STR_PRESS_USE_TO_ENTER
 } ESTRINGS;
 
 // clang-format off
@@ -41,7 +41,7 @@ static const char *GetString(enum ESTRINGS str){switch (str){
     case STR_DOOR_TAKES_ONE_KEY   : return "Door Takes One Key";
     case STR_DOOR_TAKES_TWO_KEY   : return "Door Takes Two Keys";
     case STR_DOOR_TAKES_THREE_KEY : return "Door Takes Three Keys";
-    case MSG_PRESS_USE_TO_ENTER   : return "Press Use to Enter";
+    case STR_PRESS_USE_TO_ENTER   : return "Press Use to Enter";
     default                       : return "UNKNOWN STRING";
 }}
 // clang-format on
@@ -87,7 +87,6 @@ typedef struct EnvItem
     bool isDoorOpen;
 } EnvItem;
 
-
 //----------------------------------------------------------------------------------
 // Module functions declaration
 //----------------------------------------------------------------------------------
@@ -119,20 +118,28 @@ void DoorKeyMessageRenderMethod(EnvItem *items, int itemsLen, Player *player, En
     DrawText(msg, item->rect.x, item->rect.y - 32, 12, WHITE);
     if (player->keys >= item->opt1)
     {
-        DrawText(GetString(MSG_PRESS_USE_TO_ENTER), item->rect.x, item->rect.y - 32 + 12, 12, WHITE);
+        DrawText(msg, item->rect.x, item->rect.y - 32 + 12, 12, WHITE);
     }
 }
 
 void PlayerTouchedDoor(EnvItem *items, int itemsLen, Player *player, float delta, EnvItem *item)
 {
+    if (item->isDoorOpen)
+    {
+        AddRenderEvent(DoorKeyMessageRenderMethod, player, item, (void *)GetString(STR_PRESS_USE_TO_ENTER));
+        return;
+    }
+
     if (item->opt1 == 1)
     {
         AddRenderEvent(DoorKeyMessageRenderMethod, player, item, (void *)GetString(STR_DOOR_TAKES_ONE_KEY));
+
     }
 
     if (item->opt1 == 2)
     {
         AddRenderEvent(DoorKeyMessageRenderMethod, player, item, (void *)GetString(STR_DOOR_TAKES_TWO_KEY));
+
     }
 
     if (item->opt1 == 3)
@@ -267,7 +274,6 @@ int main(void)
 
 #undef TSS
 #undef TW
-
 
     for (size_t i = 0; i < envItemsLength; i++)
     {
