@@ -116,6 +116,9 @@ void PlayerInteractDoor(EnvItem *items, int itemsLen, Player *player, float delt
     {
         // we are about to goto a diffrent level!
         ChangeLevel(item->opt2);
+
+        // move the player to the doors location
+        player->position = (Vector2){item->rect.x, item->rect.y};
     }
 }
 
@@ -184,6 +187,19 @@ const int tiles = 26;
 // Convert tile tiles to px
 #define TW(x) \
     (x * 16)
+
+// Convert tile tiles to px
+#define TH(x) \
+    (x * 16)
+
+// Convert tile tiles to px
+#define TX(x) \
+    (x * 16)
+
+// Convert tile tiles to px
+#define TY(x) \
+    (x * 16)
+
 // xy to flat index, 26 tiles per col
 #define TSS(x, y) ((x) + ((y) * (tiles)))
 // clang-format off
@@ -208,13 +224,10 @@ const int tiles = 26;
 EnvItem level1[] = {
 /*dbg   x      y  width   height    SOLID       COLOR  TEXTUREID    W H    GRAVITY   PlayerTouchCallback     PlayerInteractedWithCallback opt1, opt2, opt3   opt4*/
 {  "bg",{0,     0, TW(75), TW(25)}, 0, {27,24,24,255},         -1,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,      0,    0,    0,     0},
-{    "",{0,   400, TW(75), TW(15)}, 1,           GRAY,  TSS(0,16),  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,      0,    0,    0,     0},
-{    "",{300, 200, TW(25),  TW(1)}, 1,           GRAY,  TSS(2, 2),  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,      0,    0,    0,     0},
-{    "",{250, 300,  TW(6),  TW(1)}, 1,           GRAY,          2,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,      0,    0,    0,     0},
-{    "",{850, 100, TW(20),  TW(1)}, 1,           GRAY,          2,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,      0,    0,    0,     0},
-{    "",{650, 300,  TW(6),  TW(1)}, 1,           GRAY,          2,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,      0,    0,    0,     0},
-{ "key",{500, 300,  TW(1),  TW(1)}, 0,         YELLOW, TSS(7, 11),  1,1,     1000,        PlayerTouchedKey, (EnvItemCallback*)NULL,      0,    0,    0,     0},
-{"door",{540, 168,  TW(1),  TW(2)}, 0,            RED, TSS(10,16),  1,2,       -1,       PlayerTouchedDoor,     PlayerInteractDoor, ONEKEY,    LEVEL2_Idx,    0,     0}
+{    "",{TX(0),  TY(20), TW(330), TH(75)}, 1,           GRAY,  TSS(0,16),  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,      0,    0,    0,     0},
+{    "",{TX(18), TY(13), TW(25),  TH(1)}, 1,           GRAY,  TSS(2, 2),  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,      0,    0,    0,     0},
+{ "key",{TX(32), TY(18),  TW(1),  TW(1)}, 0,         YELLOW, TSS(7, 11),  1,1,     1000,        PlayerTouchedKey, (EnvItemCallback*)NULL,      0,    0,    0,     0},
+{"door",{TX(20), TY(11),  TW(1),  TH(2)}, 0,            RED, TSS(10,16),  1,2,       -1,       PlayerTouchedDoor,     PlayerInteractDoor, ONEKEY,    LEVEL2_Idx,    0,     0}
 };
 
 
@@ -222,8 +235,8 @@ EnvItem level2[] = {
 /*dbg   x      y  width   height    SOLID COLOR TEXTUREID    W H    GRAVITY   PlayerTouchCallback     PlayerInteractedWithCallback opt1,    opt2, opt3     opt4*/
 {    "",{0,   400, TW(75), TW(15)}, 1,    GRAY,  TSS(0,16),  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0,      0},
 {    "",{300, 200, TW(25),  TW(1)}, 1,    GRAY,  TSS(2, 2),  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0,      0},
+{    "",{315,  20, TW(25),  TW(1)}, 1,    GRAY,  TSS(2, 2),  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0,      0},
 {    "",{250, 300,  TW(6),  TW(1)}, 1,    GRAY,          2,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0,      0},
-//{    "",{850, 100, TW(20),  TW(1)}, 1,    GRAY,          2,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0,      0},
 {    "",{650, 300,  TW(6),  TW(1)}, 1,    GRAY,          2,  1,1,       -1,  (EnvItemCallback*)NULL, (EnvItemCallback*)NULL,            0,    0,    0,      0},
 { "key",{500, 300,  TW(1),  TW(1)}, 0,  YELLOW, TSS(7, 11),  1,1,     1000,        PlayerTouchedKey, (EnvItemCallback*)NULL,            0,    0,    0,      0},
 { "key",{520, 300,  TW(1),  TW(1)}, 0,  YELLOW, TSS(7, 11),  1,1,     1000,        PlayerTouchedKey, (EnvItemCallback*)NULL,            0,    0,    0,      0},
@@ -245,6 +258,9 @@ const EnvItem* levels[]={
 
 #undef TSS
 #undef TW
+#undef TH
+#undef TX
+#undef TY
 
 // --
 
